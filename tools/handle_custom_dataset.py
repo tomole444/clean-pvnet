@@ -7,7 +7,7 @@ import tqdm
 from PIL import Image
 from lib.utils import base_utils
 import json
-
+import random
 
 def read_ply_points(ply_path):
     ply = PlyData.read(ply_path)
@@ -114,3 +114,67 @@ def custom_to_coco(data_root):
     anno_path = os.path.join(data_root, 'train.json')
     with open(anno_path, 'w') as f:
         json.dump(instance, f)
+
+def leyh_to_coco(data_root, val_split):
+    #val_split = 0.8 # 1 = 100% train / 0% validation
+    model_path = os.path.join(data_root, 'model.ply')
+
+    renderer = OpenGLRenderer(model_path)
+    K = np.loadtxt(os.path.join(data_root, 'camera.txt'))
+
+    model = renderer.model['pts'] / 1000
+    corner_3d = get_model_corners(model)
+    center_3d = (np.max(corner_3d, 0) + np.min(corner_3d, 0)) / 2
+    fps_3d = np.loadtxt(os.path.join(data_root, 'fps.txt'))
+    kpt_3d = np.concatenate([fps_3d, [center_3d]], axis=0)
+
+    model_meta = {
+        'K': K,
+        'corner_3d': corner_3d,
+        'center_3d': center_3d,
+        'fps_3d': fps_3d,
+        'kpt_3d': kpt_3d,
+        'data_root': data_root,
+    }
+
+    img_id = 0
+    ann_id = 0
+    images = []
+    annotations = []
+
+    img_id, ann_id = record_ann(model_meta, img_id, ann_id, images, annotations)
+    categories = [{'supercategory': 'none', 'id': 1, 'name': 'cat'}]
+    instance = {'images': images, 'annotations': annotations, 'categories': categories}
+
+    pic_num = len(images)
+    randidxs = np.arange(pic_num)
+    np.random.shuffle(randidxs)
+    images = np.array(images)
+    images_train = images [randidxs[0:int(pic_num * val_split)]]
+    images_train = list(images_train)
+    images_val = images [randidxs[int(pic_num * val_split):]]
+    images_val = list(images_val)
+
+    annotations = np.array(annotations)
+    annotations_train = annotations [randidxs[0:int(pic_num * val_split)]]
+    annotations_train = list(annotations_train)
+    annotations_val = annotations [randidxs[int(pic_num * val_split):]]
+    annotations_val = list(annotations_val)
+    #categories = np.array(categories)
+    categories_train = categories
+    categories_val = categories
+
+    instance_train = {'images': images_train, 'annotations': annotations_train, 'categories': categories_train}
+    instance_val = {'images': images_val, 'annotations': annotations_val, 'categories': categories_val}
+
+
+    anno_train_path = os.path.join(data_root, 'train.json')
+    anno_val_path = os.path.join(data_root, 'test.json')
+    with open(anno_train_path, 'w') as f:
+        json.dump(instance_train, f)
+    with open(anno_val_path, 'w') as f:
+        json.dump(instance_val, f)
+    
+    meta_path = os.path.join(data_root, "meta.npy")
+    arr = np.array(model_meta, dtype=object)
+    np.save(meta_path,arr, allow_pickle=True)

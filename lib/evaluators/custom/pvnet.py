@@ -18,6 +18,8 @@ class Evaluator:
     def __init__(self, result_dir):
         self.result_dir = result_dir
         args = DatasetCatalog.get(cfg.test.dataset)
+        args["data_root"] = cfg.dataset_path
+        args["ann_file"] = os.path.join(cfg.dataset_path, args["ann_file"])
         self.ann_file = args['ann_file']
         self.coco = coco.COCO(self.ann_file)
 

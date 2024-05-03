@@ -33,6 +33,11 @@ cfg.eval_ep = 5
 
 cfg.demo_path = 'demo_images/cat'
 
+# custom args
+cfg.dataset_path = 'data/custom'
+cfg.val_split= 1.0 #1 = all data to train dataset 
+
+
 # -----------------------------------------------------------------------------
 # train
 # -----------------------------------------------------------------------------

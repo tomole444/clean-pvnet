@@ -3,7 +3,8 @@ conda activate pvnetclean
 
 # updated the torch version to 1.7.1 to prevent the THC.cu issue
 pip install torch===1.7.1+cu110 torchvision===0.8.2+cu110 torchaudio===0.7.2 -f https://download.pytorch.org/whl/torch_stable.html -i https://pypi.douban.com/simple/
-
+#downgrade protobuf
+pip install protobuf==3.18.3
 #Data structure
 #├── /path/to/dataset
 #│   ├── model.ply
@@ -38,7 +39,7 @@ python train_net.py --cfg_file configs/Leyh.yaml train.batch_size 2
 python train_net.py --cfg_file configs/Leyh.yaml --test True 
 
 #monitor progress
-tensorboard --logdir data/record/pvnet
+tensorboard --logdir data/record/pvnet --bind_all
 
 #visualize infernce
 python run.py --type visualize --cfg_file configs/Leyh.yaml

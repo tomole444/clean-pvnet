@@ -3,10 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import cv2
+import socket
+import pickle
 from lib.utils.pvnet import pvnet_pose_utils
 
-
-def main():
+#infernce images from folder
+def inference_folder():
     from lib.networks import make_network
     from lib.datasets import make_data_loader
     from lib.utils.net_utils import load_network
@@ -23,8 +25,8 @@ def main():
     visualizer = make_visualizer(cfg)
 
     #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
-    infPath = "/home/thws_robotik/Downloads/inf/color"
-    outdir = "/home/thws_robotik/Downloads/inf/result154"
+    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color"
+    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color/resultBig239"
     os.makedirs(outdir, exist_ok= True)
     targetRes = tuple([1280,720])
 
@@ -34,13 +36,14 @@ def main():
     mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
     pyplotFig, pyplotAx = fig, ax = plt.subplots(1) 
 
+
     for infImg in infImages:
         print(f"analysing {infImg}")
         demo_image = cv2.imread(os.path.join(infPath,infImg))
         demo_image = cv2.cvtColor(demo_image, cv2.COLOR_BGR2RGB)
         demo_image = cv2.resize(demo_image, targetRes)
         inp = (((demo_image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
-        #inp = (demo_image/255.).transpose(2, 0, 1).astype(np.float32)
+        #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
         inp = torch.Tensor(inp[None]).cuda()
         with torch.no_grad():
             output = network(inp)
@@ -60,6 +63,124 @@ def main():
         #     break
 
         pyplotAx.cla()
+
+def inference_server():
+    from lib.networks import make_network
+    from lib.datasets import make_data_loader
+    from lib.utils.net_utils import load_network
+    import tqdm
+    import torch
+    from lib.visualizers import make_visualizer
+
+
+    meta = np.load("/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/custom/meta.npy", allow_pickle=True).item()
+    host= 'localhost'
+    port= 11024
+    pvnet_termination_string = b'\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01'
+
+    network = make_network(cfg).cuda()
+    
+    load_network(network, cfg.model_dir, resume=cfg.resume, epoch=cfg.test.epoch)
+    network.eval()
+
+    data_loader = make_data_loader(cfg, is_train=False)
+    visualizer = make_visualizer(cfg)
+
+    #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
+    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color"
+    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color/resultBig239"
+
+    os.makedirs(outdir, exist_ok= True)
+    targetRes = tuple([1280,720])
+
+    infImages = os.listdir(infPath)
+    infImages.sort()
+    #mean and stdw of image_net https://stackoverflow.com/questions/58151507/why-pytorch-officially-use-mean-0-485-0-456-0-406-and-std-0-229-0-224-0-2
+    mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
+    pyplotFig, pyplotAx = fig, ax = plt.subplots(1) 
+
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, port))
+        s.listen()
+        print(f'Server listening on {host}:{port}')
+        
+        conn, addr = s.accept()
+        with conn, conn.makefile('rb') as rfile:
+                while True:
+                    try:
+                        print("waiting for packet...")
+                        data = pickle.load(rfile)        
+                    except EOFError: # when socket closes
+                        break
+                    #print(f'{addr}: {data}')
+                    image = data
+                    #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    image = cv2.resize(image, targetRes)
+                    inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
+                    #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
+                    inp = torch.Tensor(inp[None]).cuda()
+                    with torch.no_grad():
+                        output = network(inp)
+                    pose_pred = visualizer.visualize_own(output, inp, meta, pyplotFig, pyplotAx)
+                    pose_pred = pose_pred.astype(np.float32)
+                    pose_pred = np.vstack((pose_pred, [0,0,0,1]))
+                    plt.draw()
+                    plt.pause(0.0001)
+                    data = pickle.dumps(pose_pred)
+                    conn.send(data)
+        exit()
+        with conn:
+            print(f'Connected by {addr}')
+            while True:
+                while True:
+                    print("waiting for packet...")
+                    packet = conn.recv(4096)
+                    if not packet or packet == pvnet_termination_string: break
+                    print(f"received {packet}")
+                    data.append(packet)
+               
+                if len(data) > 0:
+                    image = pickle.loads(b"".join(data))
+                    #data = conn.recv(4096)
+                    #image = pickle.loads(data)
+                    if not data:
+                        break
+                    #process data
+                    pass
+                    cv2.imshow("testsocket", image)
+                    tf = np.identity(4, dtype=np.float32)
+                    data = pickle.dumps(tf)
+                    conn.send(data)  # Echo back the received data
+    exit()
+    for infImg in infImages:
+        print(f"waiting for image {infImg}")
+        image = cv2.imread(os.path.join(infPath,infImg))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = cv2.resize(image, targetRes)
+        inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
+        #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
+        inp = torch.Tensor(inp[None]).cuda()
+        with torch.no_grad():
+            output = network(inp)
+        pose_pred = visualizer.visualize_own(output, inp, meta, pyplotFig, pyplotAx)
+
+        #plt.draw()
+        #plt.pause(0.0001)
+        #plt.savefig(os.path.join(outdir, infImg))
+        resimg = image.copy()
+        resimg = draw_xyz_axis(resimg, pose_pred, K = meta["K"], is_input_rgb= True)
+        resimg = cv2.cvtColor(resimg, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(os.path.join(outdir, "pose" + infImg), resimg)
+
+        # cv2.imshow("Image", resimg)
+
+        # if cv2.waitKey(0) == ord("q"):
+        #     break
+
+        pyplotAx.cla()
+
+
 
 def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transparency=0.3,is_input_rgb=False):
     '''
@@ -112,4 +233,5 @@ if __name__ == '__main__':
     #args.type =  "visualize"
 
     #ARGS: --type visualize --cfg_file configs/Leyh.yaml
-    main()
+    #inference_folder()
+    inference_server()

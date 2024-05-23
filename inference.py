@@ -73,7 +73,7 @@ def inference_server():
     from lib.visualizers import make_visualizer
 
 
-    meta = np.load("/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/custom/meta.npy", allow_pickle=True).item()
+    meta = np.load(args.meta, allow_pickle=True).item()
     host= 'localhost'
     port= 11024
     pvnet_termination_string = b'\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01'

@@ -6,7 +6,7 @@ heads: ''
 task: 'pvnet'
 gpus: (0, 1, 2, 3)
 resume: true
-dataset_path: '/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBig'
+dataset_path: 'data/custom'
 val_split: 0.8 #1 = all data to train dataset 
 
 train:

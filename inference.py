@@ -87,17 +87,20 @@ def inference_server():
     visualizer = make_visualizer(cfg)
 
     #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
-    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color"
-    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color/resultBig239"
+    # infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color"
+    # outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color/resultBig239"
 
-    os.makedirs(outdir, exist_ok= True)
+    #os.makedirs(outdir, exist_ok= True)
     targetRes = tuple([1280,720])
 
-    infImages = os.listdir(infPath)
-    infImages.sort()
+    # infImages = os.listdir(infPath)
+    # infImages.sort()
     #mean and stdw of image_net https://stackoverflow.com/questions/58151507/why-pytorch-officially-use-mean-0-485-0-456-0-406-and-std-0-229-0-224-0-2
     mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
-    pyplotFig, pyplotAx = fig, ax = plt.subplots(1) 
+    if args.use_gui:
+        pyplotFig, pyplotAx = fig, ax = plt.subplots(1)
+    else:
+        pyplotFig, pyplotAx = None, None
 
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -122,63 +125,24 @@ def inference_server():
                     inp = torch.Tensor(inp[None]).cuda()
                     with torch.no_grad():
                         output = network(inp)
-                    pose_pred = visualizer.visualize_own(output, inp, meta, pyplotFig, pyplotAx)
+                    pose_pred = visualizer.visualize_own(output, meta)
                     pose_pred = pose_pred.astype(np.float32)
                     pose_pred = np.vstack((pose_pred, [0,0,0,1]))
-                    plt.draw()
-                    plt.pause(0.0001)
+                    if(args.use_gui):
+                        # inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
+                        # pyplotAx.imshow(inp)
+                        # corner_3d = np.array(meta['corner_3d'])
+                        # corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
+                        # #print(corner_3d)
+
+                        # #_, ax = plt.subplots(1)
+                        # pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
+                        # pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
+                        plt.draw()
+                        plt.pause(0.0001)
                     data = pickle.dumps(pose_pred)
                     conn.send(data)
-        exit()
-        with conn:
-            print(f'Connected by {addr}')
-            while True:
-                while True:
-                    print("waiting for packet...")
-                    packet = conn.recv(4096)
-                    if not packet or packet == pvnet_termination_string: break
-                    print(f"received {packet}")
-                    data.append(packet)
-               
-                if len(data) > 0:
-                    image = pickle.loads(b"".join(data))
-                    #data = conn.recv(4096)
-                    #image = pickle.loads(data)
-                    if not data:
-                        break
-                    #process data
-                    pass
-                    cv2.imshow("testsocket", image)
-                    tf = np.identity(4, dtype=np.float32)
-                    data = pickle.dumps(tf)
-                    conn.send(data)  # Echo back the received data
-    exit()
-    for infImg in infImages:
-        print(f"waiting for image {infImg}")
-        image = cv2.imread(os.path.join(infPath,infImg))
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        image = cv2.resize(image, targetRes)
-        inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
-        #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
-        inp = torch.Tensor(inp[None]).cuda()
-        with torch.no_grad():
-            output = network(inp)
-        pose_pred = visualizer.visualize_own(output, inp, meta, pyplotFig, pyplotAx)
 
-        #plt.draw()
-        #plt.pause(0.0001)
-        #plt.savefig(os.path.join(outdir, infImg))
-        resimg = image.copy()
-        resimg = draw_xyz_axis(resimg, pose_pred, K = meta["K"], is_input_rgb= True)
-        resimg = cv2.cvtColor(resimg, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(os.path.join(outdir, "pose" + infImg), resimg)
-
-        # cv2.imshow("Image", resimg)
-
-        # if cv2.waitKey(0) == ord("q"):
-        #     break
-
-        pyplotAx.cla()
 
 
 

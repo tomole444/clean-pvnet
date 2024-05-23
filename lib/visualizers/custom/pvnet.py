@@ -69,8 +69,8 @@ class Visualizer:
         plt.savefig('test.jpg')
         plt.close(0)
 
-    def visualize_own(self, output, inp, meta, pyplotFig, pyplotAx):
-        inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
+    def visualize_own(self, output, meta):
+        
         kpt_2d = output['kpt_2d'][0].detach().cpu().numpy()
 
         kpt_3d = np.array(meta['kpt_3d'])
@@ -80,14 +80,9 @@ class Visualizer:
 
         pose_pred = pvnet_pose_utils.pnp(kpt_3d, kpt_2d, K)
 
-        corner_3d = np.array(meta['corner_3d'])
-        corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
-        #print(corner_3d)
 
-        #_, ax = plt.subplots(1)
-        pyplotAx.imshow(inp)
-        pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
-        pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
+
+       
 
         return pose_pred
         

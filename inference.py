@@ -71,6 +71,8 @@ def inference_server():
     import tqdm
     import torch
     from lib.visualizers import make_visualizer
+    import matplotlib.patches as patches
+    from lib.utils import img_utils
 
 
     meta = np.load(args.meta, allow_pickle=True).item()
@@ -117,7 +119,7 @@ def inference_server():
                     except EOFError: # when socket closes
                         break
                     #print(f'{addr}: {data}')
-                    image = data
+                    image = data.copy()
                     #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                     image = cv2.resize(image, targetRes)
                     inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
@@ -127,19 +129,26 @@ def inference_server():
                         output = network(inp)
                     pose_pred = visualizer.visualize_own(output, meta)
                     pose_pred = pose_pred.astype(np.float32)
-                    pose_pred = np.vstack((pose_pred, [0,0,0,1]))
+                    
                     if(args.use_gui):
-                        # inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
-                        # pyplotAx.imshow(inp)
-                        # corner_3d = np.array(meta['corner_3d'])
-                        # corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
-                        # #print(corner_3d)
+                        #inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
+                        image = draw_xyz_axis(data.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
+                        pyplotAx.imshow(image)
+                        K = np.array(meta['K'])
+                        corner_3d = np.array(meta['corner_3d'])
+                        corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
+                        #print(corner_3d)
 
-                        # #_, ax = plt.subplots(1)
-                        # pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
-                        # pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
+                        #_, ax = plt.subplots(1)
+                        pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
+                        pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
                         plt.draw()
                         plt.pause(0.0001)
+
+                    pose_pred = np.vstack((pose_pred, [0,0,0,1]))
+                    #inverse position
+                    pose_pred = np.linalg.inv(pose_pred)
+                    print(pose_pred)
                     data = pickle.dumps(pose_pred)
                     conn.send(data)
 

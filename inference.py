@@ -25,8 +25,8 @@ def inference_folder():
     visualizer = make_visualizer(cfg)
 
     #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
-    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color"
-    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBookInference/color/resultBig239"
+    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/Buch/rgb"
+    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/Buch/outPVNet"
     os.makedirs(outdir, exist_ok= True)
     targetRes = tuple([1280,720])
 
@@ -34,7 +34,7 @@ def inference_folder():
     infImages.sort()
     #mean and stdw of image_net https://stackoverflow.com/questions/58151507/why-pytorch-officially-use-mean-0-485-0-456-0-406-and-std-0-229-0-224-0-2
     mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
-    pyplotFig, pyplotAx = fig, ax = plt.subplots(1) 
+    #pyplotFig, pyplotAx = fig, ax = plt.subplots(1) 
 
 
     for infImg in infImages:
@@ -47,13 +47,13 @@ def inference_folder():
         inp = torch.Tensor(inp[None]).cuda()
         with torch.no_grad():
             output = network(inp)
-        pose_pred = visualizer.visualize_own(output, inp, meta, pyplotFig, pyplotAx)
+        pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
 
         #plt.draw()
         #plt.pause(0.0001)
         #plt.savefig(os.path.join(outdir, infImg))
         resimg = demo_image.copy()
-        resimg = draw_xyz_axis(resimg, pose_pred, K = meta["K"], is_input_rgb= True)
+        resimg = draw_axis(resimg,pose_pred,K = meta["K"]) #draw_xyz_axis(resimg, pose_pred, K = meta["K"], is_input_rgb= True)
         resimg = cv2.cvtColor(resimg, cv2.COLOR_RGB2BGR)
         cv2.imwrite(os.path.join(outdir, "pose" + infImg), resimg)
 
@@ -62,7 +62,7 @@ def inference_folder():
         # if cv2.waitKey(0) == ord("q"):
         #     break
 
-        pyplotAx.cla()
+        #pyplotAx.cla()
 
 def inference_server():
     from lib.networks import make_network
@@ -94,7 +94,8 @@ def inference_server():
 
     #os.makedirs(outdir, exist_ok= True)
     targetRes = tuple([1280,720])
-
+    img_out_dir = os.path.join("data", "inference")
+    os.makedirs(img_out_dir, exist_ok= True)
     # infImages = os.listdir(infPath)
     # infImages.sort()
     #mean and stdw of image_net https://stackoverflow.com/questions/58151507/why-pytorch-officially-use-mean-0-485-0-456-0-406-and-std-0-229-0-224-0-2
@@ -103,6 +104,7 @@ def inference_server():
         pyplotFig, pyplotAx = fig, ax = plt.subplots(1)
     else:
         pyplotFig, pyplotAx = None, None
+        
 
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -112,6 +114,7 @@ def inference_server():
         
         conn, addr = s.accept()
         with conn, conn.makefile('rb') as rfile:
+                img_count = 0
                 while True:
                     try:
                         print("waiting for packet...")
@@ -120,7 +123,7 @@ def inference_server():
                         break
                     #print(f'{addr}: {data}')
                     image = data.copy()
-                    #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                     image = cv2.resize(image, targetRes)
                     inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
                     #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
@@ -130,9 +133,10 @@ def inference_server():
                     pose_pred = visualizer.visualize_own(output, meta)
                     pose_pred = pose_pred.astype(np.float32)
                     
+                    image = draw_xyz_axis(data.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
+                    cv2.imwrite(os.path.join(img_out_dir,str(img_count) + ".jpg"), image)
                     if(args.use_gui):
                         #inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
-                        image = draw_xyz_axis(data.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
                         pyplotAx.imshow(image)
                         K = np.array(meta['K'])
                         corner_3d = np.array(meta['corner_3d'])
@@ -147,12 +151,24 @@ def inference_server():
 
                     pose_pred = np.vstack((pose_pred, [0,0,0,1]))
                     #inverse position
-                    pose_pred = np.linalg.inv(pose_pred)
+                    #pose_pred = np.linalg.inv(pose_pred)
                     print(pose_pred)
                     data = pickle.dumps(pose_pred)
                     conn.send(data)
 
-
+def draw_axis(img, T, K):
+        # unit is m
+        #T = np.identity(4)
+        #T[:3,3] = np.array([0.083,-0.3442,-1.097])
+        rot_mat = T[:3,:3]
+        rotV, _ = cv2.Rodrigues(rot_mat)
+        tVec = T[:3,3]
+        points = np.float32([[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1], [0, 0, 0]]).reshape(-1, 3)
+        axisPoints, _ = cv2.projectPoints(points, rotV, tVec, K, (0, 0, 0, 0))
+        img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[0].ravel(), dtype=np.int16)), (0,0,255), 3)
+        img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[1].ravel(), dtype=np.int16)), (0,255,0), 3)
+        img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[2].ravel(), dtype=np.int16)), (255,0,0), 3)
+        return img
 
 
 def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transparency=0.3,is_input_rgb=False):
@@ -206,5 +222,6 @@ if __name__ == '__main__':
     #args.type =  "visualize"
 
     #ARGS: --type visualize --cfg_file configs/Leyh.yaml
+    
     #inference_folder()
     inference_server()

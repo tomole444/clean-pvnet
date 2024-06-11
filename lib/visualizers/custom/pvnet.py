@@ -18,6 +18,7 @@ class Visualizer:
 
     def __init__(self):
         args = DatasetCatalog.get(cfg.test.dataset)
+        args["ann_file"] = os.path.join(cfg.dataset_path, args["ann_file"])
         self.ann_file = args['ann_file']
         try:
             self.coco = coco.COCO(self.ann_file)

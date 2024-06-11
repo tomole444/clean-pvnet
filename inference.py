@@ -6,6 +6,12 @@ import cv2
 import socket
 import pickle
 from lib.utils.pvnet import pvnet_pose_utils
+from lib.csrc.uncertainty_pnp import un_pnp_utils
+import scipy
+import scipy.linalg
+
+confidences_sum = []
+confidences_indiv = []
 
 #infernce images from folder
 def inference_folder():
@@ -17,17 +23,26 @@ def inference_folder():
     from lib.visualizers import make_visualizer
 
     network = make_network(cfg).cuda()
-    meta = np.load("/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/custom/meta.npy", allow_pickle=True).item()
-    load_network(network, cfg.model_dir, resume=cfg.resume, epoch=cfg.test.epoch)
+    meta = np.load(args.meta, allow_pickle=True).item()
+    load_network(network, cfg.model_dir, epoch=cfg.test.epoch)
     network.eval()
 
     data_loader = make_data_loader(cfg, is_train=False)
     visualizer = make_visualizer(cfg)
 
     #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
-    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/Buch/rgb"
-    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/Buch/outPVNet"
+    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/rgb"
+    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/outPVNet239_temp"
+    viz_dir = os.path.join(outdir, "viz")
+    pose_dir = os.path.join(outdir, "pose")
+    mask_dir = os.path.join(outdir, "mask")
     os.makedirs(outdir, exist_ok= True)
+    os.makedirs(viz_dir, exist_ok= True)
+    os.makedirs(pose_dir, exist_ok= True)
+    os.makedirs(mask_dir, exist_ok= True)
+
+    upnp = True
+
     targetRes = tuple([1280,720])
 
     infImages = os.listdir(infPath)
@@ -35,7 +50,7 @@ def inference_folder():
     #mean and stdw of image_net https://stackoverflow.com/questions/58151507/why-pytorch-officially-use-mean-0-485-0-456-0-406-and-std-0-229-0-224-0-2
     mean, std = np.array([0.485, 0.456, 0.406]), np.array([0.229, 0.224, 0.225])
     #pyplotFig, pyplotAx = fig, ax = plt.subplots(1) 
-
+    counter = 0
 
     for infImg in infImages:
         print(f"analysing {infImg}")
@@ -47,7 +62,19 @@ def inference_folder():
         inp = torch.Tensor(inp[None]).cuda()
         with torch.no_grad():
             output = network(inp)
-        pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
+        if upnp:
+
+            kpt_3d = np.array(meta["kpt_3d"])
+            K = np.array(meta["K"])
+            mask = output['mask'][0].detach().cpu().numpy()
+            kpt_2d = output['kpt_2d'][0].detach().cpu().numpy()
+            var = output['var'][0].detach().cpu().numpy()
+
+            pose_pred, _= uncertainty_pnp(kpt_3d, kpt_2d, var, K)
+        else:
+            pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
+
+            
 
         #plt.draw()
         #plt.pause(0.0001)
@@ -55,14 +82,33 @@ def inference_folder():
         resimg = demo_image.copy()
         resimg = draw_axis(resimg,pose_pred,K = meta["K"]) #draw_xyz_axis(resimg, pose_pred, K = meta["K"], is_input_rgb= True)
         resimg = cv2.cvtColor(resimg, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(os.path.join(outdir, "pose" + infImg), resimg)
+        cv2.imwrite(os.path.join(viz_dir,infImg), resimg)
+        cv2.imwrite(os.path.join(mask_dir,infImg), mask * 255)
 
+        T = np.vstack((pose_pred, np.array([0,0,0,1])))
+        np.save(os.path.join(pose_dir, str(counter).zfill(5) + ".npy"),T)
+
+
+        counter += 1
         # cv2.imshow("Image", resimg)
 
         # if cv2.waitKey(0) == ord("q"):
         #     break
 
         #pyplotAx.cla()
+    
+    confidences_sum_local = np.array(confidences_sum)
+    confidences_indiv_local = np.array(confidences_indiv)
+    save_arr = dict()
+    save_arr["result_y"] = confidences_sum_local
+    save_arr["ids"] = np.array(range(counter))
+    save_arr = np.array(save_arr, dtype=object)
+    np.save(os.path.join(outdir, "confidences_sum.npy"),save_arr, allow_pickle=True)
+    save_arr = dict()
+    save_arr["result_y"] = confidences_indiv_local
+    save_arr["ids"] = np.array(range(counter))
+    save_arr = np.array(save_arr, dtype=object)
+    np.save(os.path.join(outdir, "confidences_indiv.npy"),save_arr, allow_pickle=True)
 
 def inference_server():
     from lib.networks import make_network
@@ -76,9 +122,9 @@ def inference_server():
 
 
     meta = np.load(args.meta, allow_pickle=True).item()
-    host= 'localhost'
+    host= "192.168.99.91"#'localhost'
     port= 11024
-    pvnet_termination_string = b'\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01\x00\x01'
+    upnp = True
 
     network = make_network(cfg).cuda()
     
@@ -111,51 +157,102 @@ def inference_server():
         s.bind((host, port))
         s.listen()
         print(f'Server listening on {host}:{port}')
-        
-        conn, addr = s.accept()
-        with conn, conn.makefile('rb') as rfile:
-                img_count = 0
-                while True:
-                    try:
-                        print("waiting for packet...")
-                        data = pickle.load(rfile)        
-                    except EOFError: # when socket closes
-                        break
-                    #print(f'{addr}: {data}')
-                    image = data.copy()
-                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                    image = cv2.resize(image, targetRes)
-                    inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
-                    #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
-                    inp = torch.Tensor(inp[None]).cuda()
-                    with torch.no_grad():
-                        output = network(inp)
-                    pose_pred = visualizer.visualize_own(output, meta)
-                    pose_pred = pose_pred.astype(np.float32)
-                    
-                    image = draw_xyz_axis(data.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
-                    cv2.imwrite(os.path.join(img_out_dir,str(img_count) + ".jpg"), image)
-                    if(args.use_gui):
-                        #inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
-                        pyplotAx.imshow(image)
-                        K = np.array(meta['K'])
-                        corner_3d = np.array(meta['corner_3d'])
-                        corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
-                        #print(corner_3d)
+        while True:
+            print("Waiting for connection...")
+            conn, addr = s.accept()
+            print("connected with ", addr)
+            with conn, conn.makefile('rb') as rfile:
+                    img_count = 0
+                    while True:
+                        try:
+                            print("waiting for packet...")
+                            data = pickle.load(rfile)        
+                        except EOFError: # when socket closes
+                            break
+                        #print(f'{addr}: {data}')
+                        ret_info = dict()
 
-                        #_, ax = plt.subplots(1)
-                        pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
-                        pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
-                        plt.draw()
-                        plt.pause(0.0001)
+                        image = data.copy()
+                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                        image = cv2.resize(image, targetRes)
+                        inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
+                        #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
+                        inp = torch.Tensor(inp[None]).cuda()
+                        with torch.no_grad():
+                            output = network(inp)
 
-                    pose_pred = np.vstack((pose_pred, [0,0,0,1]))
-                    #inverse position
-                    #pose_pred = np.linalg.inv(pose_pred)
-                    print(pose_pred)
-                    data = pickle.dumps(pose_pred)
-                    conn.send(data)
+                        if upnp:
+                            kpt_3d = np.array(meta["kpt_3d"])
+                            K = np.array(meta["K"])
+                            kpt_2d = output['kpt_2d'][0].detach().cpu().numpy()
+                            var = output['var'][0].detach().cpu().numpy()
 
+                            pose_pred, confidence_indiv = uncertainty_pnp(kpt_3d, kpt_2d, var, K)
+                            pose_pred = visualizer.visualize_own(output, meta) #dont use upnp pose
+                        else:
+                            pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
+                            confidence_indiv = [-1.0]
+                        pose_pred = pose_pred.astype(np.float32)
+                        
+                        
+                        
+                        image = draw_xyz_axis(data.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
+                        cv2.imwrite(os.path.join(img_out_dir,str(img_count) + ".jpg"), image)
+                        if(args.use_gui):
+                            #inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
+                            pyplotAx.imshow(image)
+                            K = np.array(meta['K'])
+                            corner_3d = np.array(meta['corner_3d'])
+                            corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
+                            #print(corner_3d)
+
+                            #_, ax = plt.subplots(1)
+                            pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
+                            pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
+                            plt.draw()
+                            plt.pause(0.0001)
+
+                        pose_pred = np.vstack((pose_pred, [0,0,0,1]))
+                        #inverse position
+                        #pose_pred = np.linalg.inv(pose_pred)
+                        print(pose_pred)
+
+                        ret_info["pose"] = pose_pred
+                        confidence_indiv = np.sum(np.abs(confidence_indiv), axis=1)
+                        confidence_indiv = confidence_indiv / 5
+                        confidence_indiv = np.clip([confidence_indiv], 0.0, 1.0)
+                        confidence_indiv = 1 - confidence_indiv 
+                        ret_info["confidences"] = confidence_indiv
+
+                        data = pickle.dumps(ret_info)
+                        conn.send(data)
+
+def uncertainty_pnp(kpt_3d, kpt_2d, var, K):
+    cov_invs = []
+    for vi in range(var.shape[0]):
+        if var[vi, 0, 0] < 1e-6 or np.sum(np.isnan(var)[vi]) > 0:
+            cov_invs.append(np.zeros([2, 2]).astype(np.float32))
+        else:
+            cov_inv = np.linalg.inv(scipy.linalg.sqrtm(var[vi]))
+            cov_invs.append(cov_inv)
+
+    cov_invs = np.asarray(cov_invs)  # pn,2,2
+
+    confidence_sum = np.sum(np.abs(cov_invs), axis=1)
+    confidence_sum = np.sum(confidence_sum, axis=1)
+    confidence_sum = np.sum(confidence_sum)
+    confidences_sum.append(confidence_sum)
+
+    weights = cov_invs.reshape([-1, 4])
+    weights = weights[:, (0, 1, 3)]
+
+    confidence_indiv = weights.copy()
+    confidences_indiv.append(confidence_indiv)
+
+
+    
+    pose_pred = un_pnp_utils.uncertainty_pnp(kpt_2d, weights, kpt_3d, K)
+    return pose_pred, confidence_indiv
 def draw_axis(img, T, K):
         # unit is m
         #T = np.identity(4)
@@ -221,7 +318,7 @@ if __name__ == '__main__':
     #args.cfg_file =  "configs/custom.yaml" 
     #args.type =  "visualize"
 
-    #ARGS: --type visualize --cfg_file configs/Leyh.yaml
+    #ARGS: --type visualize --meta /home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/meta.npy --cfg_file configs/Leyh.yaml --use_gui 0 test.un_pnp True 
     
     #inference_folder()
     inference_server()

@@ -233,8 +233,11 @@ def uncertainty_pnp(kpt_3d, kpt_2d, var, K):
         if var[vi, 0, 0] < 1e-6 or np.sum(np.isnan(var)[vi]) > 0:
             cov_invs.append(np.zeros([2, 2]).astype(np.float32))
         else:
-            cov_inv = np.linalg.inv(scipy.linalg.sqrtm(var[vi]))
-            cov_invs.append(cov_inv)
+            try:
+                cov_inv = np.linalg.inv(scipy.linalg.sqrtm(var[vi]))
+                cov_invs.append(cov_inv)
+            except:
+                return np.identity(4), np.zeros((9,2,2))
 
     cov_invs = np.asarray(cov_invs)  # pn,2,2
 
@@ -253,19 +256,20 @@ def uncertainty_pnp(kpt_3d, kpt_2d, var, K):
     
     pose_pred = un_pnp_utils.uncertainty_pnp(kpt_2d, weights, kpt_3d, K)
     return pose_pred, confidence_indiv
+
 def draw_axis(img, T, K):
-        # unit is m
-        #T = np.identity(4)
-        #T[:3,3] = np.array([0.083,-0.3442,-1.097])
-        rot_mat = T[:3,:3]
-        rotV, _ = cv2.Rodrigues(rot_mat)
-        tVec = T[:3,3]
-        points = np.float32([[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1], [0, 0, 0]]).reshape(-1, 3)
-        axisPoints, _ = cv2.projectPoints(points, rotV, tVec, K, (0, 0, 0, 0))
-        img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[0].ravel(), dtype=np.int16)), (0,0,255), 3)
-        img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[1].ravel(), dtype=np.int16)), (0,255,0), 3)
-        img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[2].ravel(), dtype=np.int16)), (255,0,0), 3)
-        return img
+    # unit is m
+    #T = np.identity(4)
+    #T[:3,3] = np.array([0.083,-0.3442,-1.097])
+    rot_mat = T[:3,:3]
+    rotV, _ = cv2.Rodrigues(rot_mat)
+    tVec = T[:3,3]
+    points = np.float32([[0.1, 0, 0], [0, 0.1, 0], [0, 0, 0.1], [0, 0, 0]]).reshape(-1, 3)
+    axisPoints, _ = cv2.projectPoints(points, rotV, tVec, K, (0, 0, 0, 0))
+    img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[0].ravel(), dtype=np.int16)), (0,0,255), 3)
+    img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[1].ravel(), dtype=np.int16)), (0,255,0), 3)
+    img = cv2.line(img, tuple(np.array(axisPoints[3].ravel(), dtype=np.int16)), tuple(np.array(axisPoints[2].ravel(), dtype=np.int16)), (255,0,0), 3)
+    return img
 
 
 def draw_xyz_axis(color, ob_in_cam, scale=0.1, K=np.eye(3), thickness=3, transparency=0.3,is_input_rgb=False):
@@ -314,6 +318,35 @@ def project_3d_to_2d(pt,K,ob_in_cam):
   projected = projected/projected[2]
   return projected.reshape(-1)[:2].round().astype(int)
 
+def draw_pose_folder(pose_dir, rgb_dir, out_dir, K_path):
+    K = np.loadtxt(K_path)
+    pose_paths = os.listdir(pose_dir)
+    rgb_paths = os.listdir(rgb_dir)
+
+    pose_paths.sort()
+    rgb_paths.sort()
+
+    os.makedirs(out_dir, exist_ok=True)
+
+    for idx, rgb_path in enumerate(rgb_paths):
+        print("reading ", rgb_path)
+        img = cv2.imread(os.path.join(rgb_dir,rgb_path))
+        pose_compact = np.load(os.path.join(pose_dir,pose_paths[idx]))
+        pose = np.identity(4)
+        #pose[:3, :] = pose_compact
+        pose = pose_compact
+
+        #img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        pose_img = draw_axis(img,pose,K)
+
+        cv2.imwrite(os.path.join(out_dir, rgb_path), pose_img)
+
+    
+
+
+
+
 if __name__ == '__main__':
     #args.cfg_file =  "configs/custom.yaml" 
     #args.type =  "visualize"
@@ -322,3 +355,7 @@ if __name__ == '__main__':
     
     #inference_folder()
     inference_server()
+    #draw_pose_folder(pose_dir="/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/pose", 
+    #                 rgb_dir= "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/rgb", 
+    #                 out_dir= "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/pose_vis", 
+    #                 K_path= "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/cam_K.txt")

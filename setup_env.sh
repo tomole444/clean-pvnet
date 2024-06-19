@@ -13,10 +13,10 @@ pip install torch===1.7.1+cu110 torchvision===0.8.2+cu110 torchaudio===0.7.2 -f 
 #do compilation
 ROOT=$(pwd)
 
-echo "export PATH='/usr/local/cuda/bin:$PATH'" >> ~/.bashrc
-echo "export LD_LIBRARY_PATH='/usr/local/cuda/lib64:$LD_LIBRARY_PATH'" >> ~/.bashrc
-echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/lib/csrc/uncertainty_pnp/lib" >> ~/.bashrc
-echo "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$(pwd)/lib/utils/extend_utils/lib" >> ~/.bashrc
+echo "export PATH='/usr/local/cuda/bin:\$PATH'" >> ~/.bashrc
+echo "export LD_LIBRARY_PATH='/usr/local/cuda/lib64:\$LD_LIBRARY_PATH'" >> ~/.bashrc
+echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$(pwd)/lib/csrc/uncertainty_pnp/lib" >> ~/.bashrc
+echo "export LD_LIBRARY_PATH=\$LD_LIBRARY_PATH:$(pwd)/lib/utils/extend_utils/lib" >> ~/.bashrc
 
 cd $ROOT/lib/csrc
 export CUDA_HOME="/usr/local/cuda"

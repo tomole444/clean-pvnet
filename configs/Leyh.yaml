@@ -8,6 +8,7 @@ gpus: (0, 1, 2, 3)
 resume: true
 dataset_path: 'data/custom'
 val_split: 0.8 #1 = all data to train dataset 
+keypoint_cnt: 8 #number of keypoints
 
 train:
     optim: 'adam'

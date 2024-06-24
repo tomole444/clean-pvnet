@@ -24,6 +24,8 @@ def inference_folder():
 
     network = make_network(cfg).cuda()
     meta = np.load(args.meta, allow_pickle=True).item()
+    model_dir = "/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/save_model/BuchOcclusion10000/"
+    cfg.model_dir = model_dir
     load_network(network, cfg.model_dir, epoch=cfg.test.epoch)
     network.eval()
 
@@ -31,8 +33,8 @@ def inference_folder():
     visualizer = make_visualizer(cfg)
 
     #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
-    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/rgb"
-    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/outPVNet239_temp"
+    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo2/rgb"
+    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo2/outPVNet239"
     viz_dir = os.path.join(outdir, "viz")
     pose_dir = os.path.join(outdir, "pose")
     mask_dir = os.path.join(outdir, "mask")
@@ -41,7 +43,7 @@ def inference_folder():
     os.makedirs(pose_dir, exist_ok= True)
     os.makedirs(mask_dir, exist_ok= True)
 
-    upnp = True
+    upnp = False
 
     targetRes = tuple([1280,720])
 
@@ -73,6 +75,8 @@ def inference_folder():
             pose_pred, _= uncertainty_pnp(kpt_3d, kpt_2d, var, K)
         else:
             pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
+            mask = output['mask'][0].detach().cpu().numpy()
+
 
             
 

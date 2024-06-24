@@ -225,7 +225,8 @@ def run_custom_split():
     from tools import handle_custom_dataset
     data_root = cfg.dataset_path # '/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchSplit'
     val_split = cfg.val_split
-    handle_custom_dataset.sample_fps_points(data_root)
+    keypoint_cnt = cfg.keypoint_cnt
+    handle_custom_dataset.sample_fps_points(data_root, keypoint_cnt=keypoint_cnt)
     handle_custom_dataset.leyh_to_coco(data_root, val_split)
 
 def run_detector_pvnet():

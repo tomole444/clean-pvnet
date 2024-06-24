@@ -36,6 +36,7 @@ cfg.demo_path = 'demo_images/cat'
 # custom args
 cfg.dataset_path = 'data/custom'
 cfg.val_split= 1.0 #1 = all data to train dataset 
+cfg.keypoint_cnt = 8
 
 
 # -----------------------------------------------------------------------------

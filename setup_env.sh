@@ -1,5 +1,6 @@
 git clone https://github.com/tomole444/clean-pvnet
 cd clean-pvnet
+source /home/$USER/anaconda3/etc/profile.d/conda.sh
 conda env create --file=environment.yml
 conda activate pvnetclean
 pip install Cython==0.28.2

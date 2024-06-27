@@ -165,71 +165,87 @@ def inference_server():
             print("Waiting for connection...")
             conn, addr = s.accept()
             print("connected with ", addr)
-            with conn, conn.makefile('rb') as rfile:
-                    img_count = 0
-                    while True:
-                        try:
-                            print("waiting for packet...")
-                            data = pickle.load(rfile)        
-                        except EOFError: # when socket closes
-                            break
-                        #print(f'{addr}: {data}')
-                        ret_info = dict()
+            img_count = 0
+            while True:
+                print("waiting for packet...")
+                data_len = int.from_bytes(conn.recv(4), byteorder='big')
+                print("receiving packet with length ", data_len)
+                data = b''
+                #receive data
+                while len(data) < data_len:
+                    part = conn.recv(data_len - len(data))
+                    data += part
+                try:
+                    input_data = pickle.loads(data)
+                except EOFError:
+                    break
+                ret_info = dict()
 
-                        image = data.copy()
-                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                        image = cv2.resize(image, targetRes)
-                        inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
-                        #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
-                        inp = torch.Tensor(inp[None]).cuda()
-                        with torch.no_grad():
-                            output = network(inp)
+                success = False
+                image = input_data["rgb"].copy()
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                image = cv2.resize(image, targetRes)
+                inp = (((image/255.)-mean)/std).transpose(2, 0, 1).astype(np.float32)
+                #inp = (demo_image/255.).transpose(, 0, 1).astype(np.float32)
+                inp = torch.Tensor(inp[None]).cuda()
+                with torch.no_grad():
+                    output = network(inp)
 
-                        if upnp:
-                            kpt_3d = np.array(meta["kpt_3d"])
-                            K = np.array(meta["K"])
-                            kpt_2d = output['kpt_2d'][0].detach().cpu().numpy()
-                            var = output['var'][0].detach().cpu().numpy()
+                mask = None
+                if input_data["request_mask"]:
+                    mask = output["mask"].detach().cpu().numpy()
 
-                            pose_pred, confidence_indiv = uncertainty_pnp(kpt_3d, kpt_2d, var, K)
-                            pose_pred = visualizer.visualize_own(output, meta) #dont use upnp pose
-                        else:
-                            pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
-                            confidence_indiv = [-1.0]
-                        pose_pred = pose_pred.astype(np.float32)
-                        
-                        
-                        
-                        image = draw_xyz_axis(data.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
-                        cv2.imwrite(os.path.join(img_out_dir,str(img_count) + ".jpg"), image)
-                        if(args.use_gui):
-                            #inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
-                            pyplotAx.imshow(image)
-                            K = np.array(meta['K'])
-                            corner_3d = np.array(meta['corner_3d'])
-                            corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
-                            #print(corner_3d)
+                if upnp:
+                    kpt_3d = np.array(meta["kpt_3d"])
+                    K = np.array(meta["K"])
+                    kpt_2d = output['kpt_2d'][0].detach().cpu().numpy()
+                    var = output['var'][0].detach().cpu().numpy()
 
-                            #_, ax = plt.subplots(1)
-                            pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
-                            pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
-                            plt.draw()
-                            plt.pause(0.0001)
+                    pose_pred, confidence_indiv = uncertainty_pnp(kpt_3d, kpt_2d, var, K)
+                    pose_pred = visualizer.visualize_own(output, meta) #dont use upnp pose
+                else:
+                    pose_pred = visualizer.visualize_own(output, meta)#inp, meta, pyplotFig, pyplotAx)
+                    confidence_indiv = [-1.0]
+                success = True
+                pose_pred = pose_pred.astype(np.float32)
+                
+                
+                
+                image = draw_xyz_axis(image.copy(), pose_pred, K = meta["K"], is_input_rgb= True)
+                cv2.imwrite(os.path.join(img_out_dir,str(img_count) + ".jpg"), image)
+                if(args.use_gui):
+                    #inp = img_utils.unnormalize_img(inp[0], mean, std).permute(1, 2, 0)
+                    pyplotAx.imshow(image)
+                    K = np.array(meta['K'])
+                    corner_3d = np.array(meta['corner_3d'])
+                    corner_2d_pred = pvnet_pose_utils.project(corner_3d, K, pose_pred)
+                    #print(corner_3d)
 
-                        pose_pred = np.vstack((pose_pred, [0,0,0,1]))
-                        #inverse position
-                        #pose_pred = np.linalg.inv(pose_pred)
-                        print(pose_pred)
+                    #_, ax = plt.subplots(1)
+                    pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[0, 1, 3, 2, 0, 4, 6, 2]], fill=False, linewidth=1, edgecolor='b'))
+                    pyplotAx.add_patch(patches.Polygon(xy=corner_2d_pred[[5, 4, 6, 7, 5, 1, 3, 7]], fill=False, linewidth=1, edgecolor='b'))
+                    plt.draw()
+                    plt.pause(0.0001)
 
-                        ret_info["pose"] = pose_pred
-                        confidence_indiv = np.sum(np.abs(confidence_indiv), axis=1)
-                        confidence_indiv = confidence_indiv / 5
-                        confidence_indiv = np.clip([confidence_indiv], 0.0, 1.0)
-                        confidence_indiv = 1 - confidence_indiv 
-                        ret_info["confidences"] = confidence_indiv
+                pose_pred = np.vstack((pose_pred, [0,0,0,1]))
+                #inverse position
+                #pose_pred = np.linalg.inv(pose_pred)
+                print(pose_pred)
 
-                        data = pickle.dumps(ret_info)
-                        conn.send(data)
+                ret_info["pose"] = pose_pred
+                confidence_indiv = np.sum(np.abs(confidence_indiv), axis=1)
+                confidence_indiv = confidence_indiv / 5
+                confidence_indiv = np.clip([confidence_indiv], 0.0, 1.0)
+                confidence_indiv = 1 - confidence_indiv 
+                ret_info["confidences"] = confidence_indiv
+                ret_info["mask"] = mask
+                ret_info["success"] = success
+
+                data = pickle.dumps(ret_info)
+                
+                #sending length first
+                conn.sendall(len(data).to_bytes(4, byteorder='big'))
+                conn.sendall(data)
 
 def uncertainty_pnp(kpt_3d, kpt_2d, var, K):
     cov_invs = []

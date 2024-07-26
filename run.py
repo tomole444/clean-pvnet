@@ -223,11 +223,31 @@ def run_custom():
 
 def run_custom_split():
     from tools import handle_custom_dataset
+    import json
     data_root = cfg.dataset_path # '/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchSplit'
     val_split = cfg.val_split
     keypoint_cnt = cfg.keypoint_cnt
     handle_custom_dataset.sample_fps_points(data_root, keypoint_cnt=keypoint_cnt)
     handle_custom_dataset.leyh_to_coco(data_root, val_split)
+    
+    train_json = None
+    with open("data/custom/train.json", 'r', encoding='utf-8') as file:
+        train_json = json.load(file)
+    if train_json is not None:
+        anno = train_json["annotations"][0]
+        corner_3d = np.array(anno['corner_3d'])
+        kpt_3d = np.concatenate([anno['fps_3d'], [anno['center_3d']]], axis=0)
+        np.savetxt("data/custom/corner_3d.txt", corner_3d)
+        np.savetxt("data/custom/kpt_3d.txt", kpt_3d)
+        K = np.loadtxt("data/custom/camera.txt")
+        arr = dict()
+        arr["kpt_3d"] = kpt_3d
+        arr["corner_3d"] = corner_3d
+        arr["K"] = K
+        arr = np.array(arr, dtype=object)
+        np.save("data/custom/meta.npy",arr, allow_pickle=True)
+
+
 
 def run_detector_pvnet():
     from lib.networks import make_network

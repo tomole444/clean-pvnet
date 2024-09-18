@@ -14,7 +14,7 @@ confidences_sum = []
 confidences_indiv = []
 
 #infernce images from folder
-def inference_folder():
+def inference_folder(model_dir = "/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/save_model/HO3DBottleCloseUp/"):
     from lib.networks import make_network
     from lib.datasets import make_data_loader
     from lib.utils.net_utils import load_network
@@ -24,7 +24,6 @@ def inference_folder():
 
     network = make_network(cfg).cuda()
     meta = np.load(args.meta, allow_pickle=True).item()
-    model_dir = "/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/save_model/BuchOcclusion10000/"
     cfg.model_dir = model_dir
     load_network(network, cfg.model_dir, epoch=cfg.test.epoch)
     network.eval()
@@ -33,8 +32,10 @@ def inference_folder():
     visualizer = make_visualizer(cfg)
 
     #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/ownBuchBlenderPVNet/rgb"
-    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo2/rgb"
-    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo2/outPVNet239"
+    infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/HO3D_v3/evaluation/AP10/rgb"
+    #infPath = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/HO3DBottle480p/rgb"
+    outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/HO3D_v3/evaluation/AP10/outHO3DBottleCloseUpPVNet"
+    #outdir = "/home/thws_robotik/Documents/Leyh/6dpose/datasets/HO3DBottle480p/outHO3DBottle480pPVNet"
     viz_dir = os.path.join(outdir, "viz")
     pose_dir = os.path.join(outdir, "pose")
     mask_dir = os.path.join(outdir, "mask")
@@ -45,7 +46,7 @@ def inference_folder():
 
     upnp = False
 
-    targetRes = tuple([1280,720])
+    targetRes = tuple([640,480])
 
     infImages = os.listdir(infPath)
     infImages.sort()
@@ -114,7 +115,7 @@ def inference_folder():
     save_arr = np.array(save_arr, dtype=object)
     np.save(os.path.join(outdir, "confidences_indiv.npy"),save_arr, allow_pickle=True)
 
-def inference_server():
+def inference_server(model_dir = "/home/thws_robotik/Documents/Leyh/6dpose/detection/clean-pvnet/data/save_model/ownBuchBig/"):
     from lib.networks import make_network
     from lib.datasets import make_data_loader
     from lib.utils.net_utils import load_network
@@ -132,6 +133,7 @@ def inference_server():
 
     network = make_network(cfg).cuda()
     
+    cfg.model_dir = model_dir
     load_network(network, cfg.model_dir, resume=cfg.resume, epoch=cfg.test.epoch)
     network.eval()
 
@@ -372,6 +374,10 @@ if __name__ == '__main__':
     #args.type =  "visualize"
 
     #ARGS: --type visualize --meta /home/thws_robotik/Documents/Leyh/6dpose/datasets/BuchVideo/meta.npy --cfg_file configs/Leyh.yaml --use_gui 0 test.un_pnp True 
+
+
+
+    #ARGS: --type visualize --meta /home/thws_robotik/Documents/Leyh/6dpose/datasets/HO3DBottle/meta.npy --cfg_file configs/Leyh.yaml --use_gui 0 test.un_pnp True 
     
     #inference_folder()
     inference_server()
